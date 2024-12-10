@@ -7,7 +7,8 @@ program gcm2cape
 
 use parametersmod, only : sp,dp,i2
 use netcdf
-use capemod, only : getcape
+use capemod,       only : getcape
+use calendarmod,   only : timestruct,ymdt2jd
 
 implicit none
 
@@ -33,21 +34,10 @@ real(sp), allocatable, dimension(:,:,:) :: QV ! specific humidity (kg kg-1)
 
 real(sp) :: imissing
 
-! real(sp), allocatable, dimension(:,:)   :: ps   ! surface pressure (Pa)
-! real(sp)                                :: p0   ! reference pressure; Pa
-! real(sp), allocatable, dimension(:)     :: a    ! vertical coordinate formula term: a(k)
-! real(sp), allocatable, dimension(:)     :: b    ! vertical coordinate formula term: b(k)
-
 ! intermediate variables
 
 real(sp), allocatable, dimension(:) :: Tair              ! air temperature (degC)
 real(sp), allocatable, dimension(:) :: Tdew              ! dewpoint temperature (degC)
-
-! real(sp), allocatable, dimension(:) :: pressure          ! total pressure (mb)
-! real(sp), allocatable, dimension(:) :: smr               ! saturation mixing ratio (kg kg-1)
-! real(sp), allocatable, dimension(:) :: svp               ! saturation vapour pressure (mb)
-! real(sp), allocatable, dimension(:) :: relative_humidity ! relative humidity (unitless)
-! real(sp), allocatable, dimension(:) :: partial_pressure  ! (mb)
 
 ! output variables
 
@@ -81,14 +71,11 @@ integer :: l
 integer :: t
 integer :: l0
 integer :: lm
+integer :: ot
+integer :: otb
 
 integer :: tairid
 integer :: humsid
-
-! real(sp) :: Tmin
-! real(sp) :: Tmax
-! real(sp) :: Qmin
-! real(sp) :: Qmax
 
 integer :: capeid
 integer :: cinid
@@ -96,17 +83,18 @@ integer :: cinid
 real(sp) :: varmin
 real(sp) :: varmax
 
-real(sp), dimension(2) :: actual_range
+real(sp), dimension(2) :: ar_cape
+real(sp), dimension(2) :: ar_cin
 
-! integer :: psid
-! integer :: aid
-! integer :: bid
-! integer :: p0id ! used for p0 OR ptop
-! integer :: levid
-! integer :: intimeid
-! integer :: outtimeid
-! 
-integer, parameter :: ompchunk = 16
+type(timestruct) :: bt
+type(timestruct) :: tt
+
+integer :: year
+integer :: mon
+integer :: day
+integer :: hr
+
+character(50) :: yyyymmdd
 
 ! -----------------------------------------------------------------------------------------------
 
@@ -114,7 +102,7 @@ call getarg(1,infile)
 
 call getarg(2,outfile)
 
-! -------------------------------------------------
+! ---
 
 status = nf90_open(infile,nf90_nowrite,ifid)
 if (status /= nf90_noerr) call handle_err(status)
@@ -150,8 +138,6 @@ allocate(lat(ylen))
 allocate(lev(nlev))
 allocate(time(tlen))
 
-! write(0,*)xlen,ylen,nlev,tlen
-
 status = nf90_inq_varid(ifid,'lon',varid)
 if (status /= nf90_noerr) call handle_err(status)
 
@@ -170,29 +156,42 @@ if (status /= nf90_noerr) call handle_err(status)
 status = nf90_get_var(ifid,varid,lev)
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_inq_varid(ifid,'time',varid)
-if (status /= nf90_noerr) call handle_err(status)
-
-status = nf90_get_var(ifid,varid,time)
-if (status /= nf90_noerr) call handle_err(status)
-
 lm = minloc(lev,mask=lev >= 100.,dim=1)
 
-! write(*,*)'top level',lm,lev(lm)
+! ---
+
+bt = timestruct(1980,1,1,0,0,0.)
+
+call ymdt2jd(bt)
+
+call getarg(3,yyyymmdd)
+
+read(yyyymmdd(1:4),*)year
+read(yyyymmdd(5:6),*)mon
+read(yyyymmdd(7:8),*)day
+
+tt = timestruct(year,mon,day,0,0,0.)
+
+call ymdt2jd(tt)
+
+otb = 4 * nint(tt%jd - bt%jd)
+
+do t = 1,4
+
+  hr = 6 * (t - 1)
+  
+  tt = timestruct(year,mon,day,hr,0,0.)
+  
+  call ymdt2jd(tt)
+
+  time(t) = tt%jd - bt%jd
+
+end do
 
 ! ---
 
 allocate(Tk(xlen,ylen,nlev))
 allocate(QV(xlen,ylen,nlev))
-
-! allocate(ps(xlen,ylen))
-! allocate(a(nlev))
-! allocate(b(nlev))
-! 
-! allocate(svp(nlev))
-! allocate(smr(nlev))
-! allocate(relative_humidity(nlev))
-! allocate(partial_pressure(nlev))
 
 allocate(Tair(nlev))
 allocate(Tdew(nlev))
@@ -220,8 +219,6 @@ if (status /= nf90_noerr) call handle_err(status)
 ! -------------------------------------------------------
 ! open output and write coordinate variables
 
-! write(0,*)'open ',outfile
-
 status = nf90_open(outfile,nf90_write,ofid)
 if (status /= nf90_noerr) call handle_err(status)
 
@@ -240,7 +237,7 @@ if (status /= nf90_noerr) call handle_err(status)
 status = nf90_inq_varid(ofid,'time',varid)
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_put_var(ofid,varid,time)
+status = nf90_put_var(ofid,varid,time,start=[otb+1],count=[tlen])
 if (status /= nf90_noerr) call handle_err(status)
 
 ! get varids for output
@@ -256,26 +253,23 @@ if (status /= nf90_noerr) call handle_err(status)
 
 do t = 1,tlen
 
+  ot = otb + t
+  
+  ! ---
+
   status = nf90_get_var(ifid,tairid,Tk,start=[1,1,1,t],count=[xlen,ylen,nlev,1])   
   if (status /= nf90_noerr) call handle_err(status)
   
   status = nf90_get_var(ifid,humsid,QV,start=[1,1,1,t],count=[xlen,ylen,nlev,1])   
   if (status /= nf90_noerr) call handle_err(status)
   
-!   Tmin = minval(Tk,mask=Tk /= imissing)
-!   Tmax = maxval(Tk,mask=Tk /= imissing)
-!   Qmin = minval(QV,mask=QV /= imissing .and. QV > 0.)
-!   Qmax = maxval(QV,mask=QV /= imissing)
-!   
-!   write(0,*)'working on ',t,time(t),Tmin,Tmax,Qmin,Qmax
+  write(status_line,'(a,i0,a,f0.3)')' working on ',ot,' ',time(t) 
+  call overprint(status_line)
 
   do y = 1,ylen
   
-    write(status_line,'(a,i0,a,i0)')' working on row ',y,' out of ',ylen
-    call overprint(status_line)
-
     !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l,l0,Tair,Tdew,q,p)
-    !$OMP DO SCHEDULE(DYNAMIC,ompchunk)
+    !$OMP DO SCHEDULE(GUIDED)
 
     do x = 1,xlen
     
@@ -308,49 +302,50 @@ do t = 1,tlen
 
   end do
 
-  write(0,*)
-
   ! ---
+  ! CAPE
   
-  status = nf90_get_att(ofid,capeid,'actual_range',actual_range)
+  status = nf90_get_att(ofid,capeid,'actual_range',ar_cape)
   if (status /= nf90_noerr) call handle_err(status)
 
   varmin = minval(cape,mask=cape/=rmissing)
   varmax = maxval(cape,mask=cape/=rmissing)
 
-  actual_range(1) = min(actual_range(1),varmin)
-  actual_range(2) = max(actual_range(2),varmax)
+  ar_cape(1) = min(ar_cape(1),varmin)
+  ar_cape(2) = max(ar_cape(2),varmax)
   
-  write(0,*)'CAPE:',actual_range
 
-  status = nf90_put_att(ofid,capeid,'actual_range',actual_range)
+  status = nf90_put_att(ofid,capeid,'actual_range',ar_cape)
   if (status /= nf90_noerr) call handle_err(status)
 
   ! ---
+  ! CIN
   
-  status = nf90_get_att(ofid,cinid,'actual_range',actual_range)
+  status = nf90_get_att(ofid,cinid,'actual_range',ar_cin)
   if (status /= nf90_noerr) call handle_err(status)
 
   varmin = minval(cin,mask=cape/=rmissing)
   varmax = maxval(cin,mask=cape/=rmissing)
 
-  actual_range(1) = min(actual_range(1),varmin)
-  actual_range(2) = max(actual_range(2),varmax)
-  
-  write(0,*)'CIN: ',actual_range
+  ar_cin(1) = min(ar_cin(1),varmin)
+  ar_cin(2) = max(ar_cin(2),varmax)
 
-  status = nf90_put_att(ofid,cinid,'actual_range',actual_range)
+  status = nf90_put_att(ofid,cinid,'actual_range',ar_cin)
   if (status /= nf90_noerr) call handle_err(status)
 
   ! ---
   
-  status = nf90_put_var(ofid,capeid,cape,start=[1,1,t],count=[xlen,ylen,1])
+  status = nf90_put_var(ofid,capeid,cape,start=[1,1,ot],count=[xlen,ylen,1])
   if (status /= nf90_noerr) call handle_err(status)
 
-  status = nf90_put_var(ofid,cinid,cin,start=[1,1,t],count=[xlen,ylen,1])
+  status = nf90_put_var(ofid,cinid,cin,start=[1,1,ot],count=[xlen,ylen,1])
   if (status /= nf90_noerr) call handle_err(status)
 
 end do
+
+write(0,*)
+write(0,*)'CAPE:',ar_cape
+write(0,*)'CIN: ',ar_cin
 
 ! -------------------------------------------------------
 

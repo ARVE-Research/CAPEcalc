@@ -28,6 +28,7 @@ LIBS     = -lnetcdff
 
 CAPE_OBJS = parametersmod.o \
             capemod.o       \
+            calendarmod.o   \
             merra2cape.o
 
 # ---------------------------------------------
