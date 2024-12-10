@@ -59,6 +59,8 @@ real(sp), allocatable, dimension(:,:) :: cin
 character(200) :: infile
 character(200) :: outfile
 
+character(60)  :: status_line
+
 real(sp) :: q     ! specific humidity (kg kg-1)
 real(sp) :: p     ! pressure (hPa)
 
@@ -83,17 +85,28 @@ integer :: lm
 integer :: tairid
 integer :: humsid
 
+! real(sp) :: Tmin
+! real(sp) :: Tmax
+! real(sp) :: Qmin
+! real(sp) :: Qmax
+
+integer :: capeid
+integer :: cinid
+
+real(sp) :: varmin
+real(sp) :: varmax
+
+real(sp), dimension(2) :: actual_range
+
 ! integer :: psid
 ! integer :: aid
 ! integer :: bid
 ! integer :: p0id ! used for p0 OR ptop
 ! integer :: levid
-! integer :: capeid
-! integer :: cinid
 ! integer :: intimeid
 ! integer :: outtimeid
 ! 
-! integer :: ompchunk = 4
+integer, parameter :: ompchunk = 16
 
 ! -----------------------------------------------------------------------------------------------
 
@@ -137,7 +150,7 @@ allocate(lat(ylen))
 allocate(lev(nlev))
 allocate(time(tlen))
 
-write(0,*)xlen,ylen,nlev,tlen
+! write(0,*)xlen,ylen,nlev,tlen
 
 status = nf90_inq_varid(ifid,'lon',varid)
 if (status /= nf90_noerr) call handle_err(status)
@@ -165,7 +178,7 @@ if (status /= nf90_noerr) call handle_err(status)
 
 lm = minloc(lev,mask=lev >= 100.,dim=1)
 
-write(0,*)'top level',lm,lev(lm)
+! write(*,*)'top level',lm,lev(lm)
 
 ! ---
 
@@ -205,25 +218,40 @@ status = nf90_inq_varid(ifid,'QV',humsid)
 if (status /= nf90_noerr) call handle_err(status)
 
 ! -------------------------------------------------------
+! open output and write coordinate variables
 
 ! write(0,*)'open ',outfile
-! 
-! status = nf90_inq_varid(ofid,'time',outtimeid)
-! if (status /= nf90_noerr) call handle_err(status)
-! 
-! status = nf90_open(outfile,nf90_write,ofid)
-! if (status /= nf90_noerr) call handle_err(status)
-! 
-! status = nf90_inq_varid(ofid,'cape',capeid)
-! if (status /= nf90_noerr) call handle_err(status)
-! 
-! status = nf90_inq_varid(ofid,'cin',cinid)
-! if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_open(outfile,nf90_write,ofid)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_inq_varid(ofid,'lon',varid)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_put_var(ofid,varid,lon)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_inq_varid(ofid,'lat',varid)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_put_var(ofid,varid,lat)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_inq_varid(ofid,'time',varid)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_put_var(ofid,varid,time)
+if (status /= nf90_noerr) call handle_err(status)
+
+! get varids for output
+
+status = nf90_inq_varid(ofid,'CAPE',capeid)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_inq_varid(ofid,'CIN',cinid)
+if (status /= nf90_noerr) call handle_err(status)
 
 ! -------------------------------------------------------
-
-write(0,*)'calculating'
-
 ! main timestep loop, calculate one timestep at a time
 
 do t = 1,tlen
@@ -234,59 +262,103 @@ do t = 1,tlen
   status = nf90_get_var(ifid,humsid,QV,start=[1,1,1,t],count=[xlen,ylen,nlev,1])   
   if (status /= nf90_noerr) call handle_err(status)
   
-  write(0,*)'working on ',t,time(t)
+!   Tmin = minval(Tk,mask=Tk /= imissing)
+!   Tmax = maxval(Tk,mask=Tk /= imissing)
+!   Qmin = minval(QV,mask=QV /= imissing .and. QV > 0.)
+!   Qmax = maxval(QV,mask=QV /= imissing)
+!   
+!   write(0,*)'working on ',t,time(t),Tmin,Tmax,Qmin,Qmax
 
   do y = 1,ylen
+  
+    write(status_line,'(a,i0,a,i0)')' working on row ',y,' out of ',ylen
+    call overprint(status_line)
+
+    !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l,l0,Tair,Tdew,q,p)
+    !$OMP DO SCHEDULE(DYNAMIC,ompchunk)
+
     do x = 1,xlen
     
       Tdew = rmissing
     
-      do l = 1,nlev
-      
-        if (Tk(x,y,l) == imissing .or. QV(x,y,l) == imissing) cycle
+      do l = 1,lm
+
+        ! there are places in the input where q = 0, which breaks the calculations, so skip these values
+              
+        if (QV(x,y,l) == imissing .or. .not. QV(x,y,l) > 0.) cycle
     
         ! calculate dewpoint temperature
-
+        
         Tair(l) = Tk(x,y,l) - tfreeze
-        q       = max(QV(x,y,l),minq)  ! there are places in the input where q = 0, which breaks the calculation
+        q       = QV(x,y,l)
         p       = lev(l)
 
         Tdew(l) = dewpoint(Tair(l),q,p)
 
       end do
-      
+
       l0 = maxloc(lev,mask=Tdew /= rmissing,dim=1)
-      
-      do l = l0,lm
-        write(0,*)l,lev(l),Tair(l),Tdew(l)
-      end do
-            
+
       call getcape(lev(l0:lm),Tair(l0:lm),Tdew(l0:lm),cape(x,y),cin(x,y))
       
     end do
+
+    !$OMP END DO NOWAIT
+    !$OMP END PARALLEL
+
   end do
+
+  write(0,*)
+
+  ! ---
   
-!   status = nf90_put_var(ofid,capeid,cape,start=[1,1,t],count=[xlen,ylen,1])
-!   if (status /= nf90_noerr) call handle_err(status)
-! 
-!   status = nf90_put_var(ofid,cinid,cin,start=[1,1,t],count=[xlen,ylen,1])
-!   if (status /= nf90_noerr) call handle_err(status)
+  status = nf90_get_att(ofid,capeid,'actual_range',actual_range)
+  if (status /= nf90_noerr) call handle_err(status)
+
+  varmin = minval(cape,mask=cape/=rmissing)
+  varmax = maxval(cape,mask=cape/=rmissing)
+
+  actual_range(1) = min(actual_range(1),varmin)
+  actual_range(2) = max(actual_range(2),varmax)
+  
+  write(0,*)'CAPE:',actual_range
+
+  status = nf90_put_att(ofid,capeid,'actual_range',actual_range)
+  if (status /= nf90_noerr) call handle_err(status)
+
+  ! ---
+  
+  status = nf90_get_att(ofid,cinid,'actual_range',actual_range)
+  if (status /= nf90_noerr) call handle_err(status)
+
+  varmin = minval(cin,mask=cape/=rmissing)
+  varmax = maxval(cin,mask=cape/=rmissing)
+
+  actual_range(1) = min(actual_range(1),varmin)
+  actual_range(2) = max(actual_range(2),varmax)
+  
+  write(0,*)'CIN: ',actual_range
+
+  status = nf90_put_att(ofid,cinid,'actual_range',actual_range)
+  if (status /= nf90_noerr) call handle_err(status)
+
+  ! ---
+  
+  status = nf90_put_var(ofid,capeid,cape,start=[1,1,t],count=[xlen,ylen,1])
+  if (status /= nf90_noerr) call handle_err(status)
+
+  status = nf90_put_var(ofid,cinid,cin,start=[1,1,t],count=[xlen,ylen,1])
+  if (status /= nf90_noerr) call handle_err(status)
 
 end do
-
-! -------------------------------------------------------
-! add time
-
-! status = nf90_put_var(ofid,outtimeid,time,start=[1],count=[tlen])
-! if (status /= nf90_noerr) call handle_err(status) 
 
 ! -------------------------------------------------------
 
 status = nf90_close(ifid)
 if (status /= nf90_noerr) call handle_err(status)
 
-! status = nf90_close(ofid)
-! if (status /= nf90_noerr) call handle_err(status)
+status = nf90_close(ofid)
+if (status /= nf90_noerr) call handle_err(status)
 
 ! ----------------------------------------------------------------------------------------------------------------
 
@@ -377,6 +449,30 @@ L = lvap(Tair) * 1000.
 dewpoint = (T0i - Rv / L * log(e / e0))**(-1) - T0
 
 end function dewpoint
+
+! ----------------------------------------------------------------------------------------------------------------
+
+subroutine overprint(message)
+
+use parametersmod, only : stderr
+
+implicit none
+
+! argument
+
+character(*), intent(in) :: message
+
+! parameter
+
+character, parameter :: cr = char(13)
+
+! ---
+
+write(stderr,'(a)',advance='no')message
+flush(0)
+write(0,'(a1)',advance='no')cr
+
+end subroutine overprint
 
 ! ----------------------------------------------------------------------------------------------------------------
 

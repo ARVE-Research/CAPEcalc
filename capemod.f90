@@ -105,17 +105,17 @@ integer,  parameter :: adiabat = 1  ! Formulation of moist adiabat:
 
 ! fixed parameters
 
-real(sp), parameter :: g     = 9.81
-real(sp), parameter :: p00   = 100000.
-real(sp), parameter :: cp    = 1005.7
-real(sp), parameter :: rd    = 287.04
-real(sp), parameter :: rv    = 461.5
+real(sp), parameter :: g     =       9.81
+real(sp), parameter :: p00   =  100000.
+real(sp), parameter :: cp    =    1005.7
+real(sp), parameter :: rd    =     287.04
+real(sp), parameter :: rv    =     461.5
 real(sp), parameter :: xlv   = 2501000.
 real(sp), parameter :: xls   = 2836017.
-real(sp), parameter :: t0    = 273.15
-real(sp), parameter :: cpv   = 1875.
-real(sp), parameter :: cpl   = 4190.
-real(sp), parameter :: cpi   = 2118.636
+real(sp), parameter :: t0    =     273.15
+real(sp), parameter :: cpv   =    1875.
+real(sp), parameter :: cpl   =    4190.
+real(sp), parameter :: cpi   =    2118.636
 
 real(sp), parameter :: lv1   = xlv + (cpl - cpv) * t0
 real(sp), parameter :: lv2   = cpl - cpv
@@ -131,7 +131,7 @@ real(sp), parameter :: cpdg  = cp / g
 
 real(sp), parameter :: converge = 0.0002
 
-integer, parameter :: debug_level = 200
+integer, parameter :: debug_level = 0
 
 ! local variables
 
@@ -146,7 +146,7 @@ integer :: kmax
 integer :: n
 integer :: nloop
 integer :: i
-integer :: orec
+! integer :: orec
 
 real(sp), allocatable, dimension(:) :: p
 real(sp), allocatable, dimension(:) :: t
@@ -216,10 +216,12 @@ nk = size(p_in)
 allocate(p(nk))
 allocate(t(nk))
 allocate(td(nk))
+
 allocate(pi(nk))
 allocate(q(nk))
 allocate(th(nk))
 allocate(thv(nk))
+
 allocate(z(nk))
 allocate(pt(nk))
 allocate(pb(nk))
@@ -228,18 +230,25 @@ allocate(pn(nk))
 allocate(ptv(nk))
 
 ! --------------
+! data integrity check
+
+if (any(td_in < -173.15)) then
+  write(0,*)'error in input dewpoint',td_in
+  stop
+end if
 
 ! convert p,t,td to mks units; get pi,q,th,thv 
 
-do k=1,nk
+do k = 1,nk
 
-  p(k)   = 100. * p_in(k)            ! convert pressure from kPa to Pa
+  p(k)   = 100. * p_in(k)            ! convert pressure from hPa to Pa
   t(k)   = t0 + t_in(k)              ! convert temperature to K
   td(k)  = t0 + td_in(k)             ! convert dewpoint to K
 
   pi(k)  = (p(k) * rp00)**rddcp
   q(k)   = getqvs(p(k),td(k))
-  th(k)  = t(k )/ pi(k)
+  th(k)  = t(k) / pi(k)
+
   thv(k) = th(k) * (1. + reps * q(k)) / (1. + q(k))
 
 end do
@@ -388,8 +397,10 @@ if (source == 1 .or. source == 2) then
 else
 
   k    = kmax
-  th2  = avgth
-  qv2  = avgqv
+
+  th2  = real(avgth,sp)
+  qv2  = real(avgqv,sp)
+
   thv2 = th2 * (1. + reps * qv2) / (1. + qv2)
   pi2  = pi(kmax)
   p2   = p(kmax)
@@ -668,7 +679,7 @@ real(sp) :: es
 
 ! ----
 
-es = 611.2 * exp(17.67 * (tfreeze) / (t - 29.65))
+es = 611.2 * exp(17.67 * (t - tfreeze) / (t - 29.65))
 
 getqvs = eps * es / (p - es)
 

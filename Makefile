@@ -1,14 +1,17 @@
 # makefile
 
 FC = gfortran
+
+FCFLAGS = -ffree-form -ffree-line-length-none -ftree-vectorize -fopenmp -Wall
 # FCFLAGS = -ffree-form -ffree-line-length-none -ftree-vectorize -Wall
 
-FCFLAGS = -g  -O0 -ffree-line-length-none -fcheck=all -fno-check-array-temporaries -ffpe-trap=invalid,zero,overflow,underflow -g -fbacktrace -Wall -pedantic
+# FCFLAGS = -g  -O0 -ffree-line-length-none -fcheck=all -fno-check-array-temporaries -ffpe-trap=invalid,zero,overflow,underflow -g -fbacktrace -Wall -pedantic
 
 # use the command "nf-config --all" to find the location of your netCDF installation
 # and enter the path next to " --prefix    ->" on the line below
 
-netcdf = /usr/local
+# netcdf = /usr/local
+netcdf = /home/public/easybuild/software/netCDF-Fortran/4.6.1-gompi-2023a
 
 # should not need to modify anything below this line
 
