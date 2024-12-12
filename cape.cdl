@@ -1,0 +1,49 @@
+netcdf MERRA2-CAPE {
+dimensions:
+	time = UNLIMITED ;
+	lon = 576 ;
+	lat = 361 ;
+variables:
+	double lon(lon) ;
+		lon:standard_name = "longitude" ;
+		lon:long_name = "longitude" ;
+		lon:units = "degrees_east" ;
+		lon:axis = "X" ;
+	double lat(lat) ;
+		lat:standard_name = "latitude" ;
+		lat:long_name = "latitude" ;
+		lat:units = "degrees_north" ;
+		lat:axis = "Y" ;
+	double time(time) ;
+		time:standard_name = "time" ;
+		time:long_name = "time" ;
+		time:units = "days since 1980-01-01 00:00:00" ;
+		time:calendar = "standard" ;
+		time:axis = "T" ;
+	float CAPE(time, lat, lon) ;
+		CAPE:long_name = "Convective Available Potential Energy" ;
+		CAPE:units = "J kg-1" ;
+		CAPE:_FillValue = -9999.f ;
+		CAPE:missing_value = -9999.f ;
+		CAPE:actual_range = 9999.f, -9999.f ;
+		CAPE:_Storage = "chunked" ;
+		CAPE:_ChunkSizes = 1, 113, 576 ;
+		CAPE:_Shuffle = "true" ;
+		CAPE:_DeflateLevel = 1 ;
+	float CIN(time, lat, lon) ;
+		CIN:long_name = "Convective Inhibition" ;
+		CIN:units = "J kg-1" ;
+		CIN:_FillValue = -9999.f ;
+		CIN:missing_value = -9999.f ;
+		CIN:actual_range = 9999.f, -9999.f ;
+		CIN:_Storage = "chunked" ;
+		CIN:_ChunkSizes = 1, 113, 576 ;
+		CIN:_Shuffle = "true" ;
+		CIN:_DeflateLevel = 1 ;
+
+// global attributes:
+		:Conventions = "COARDS, CF-1.11" ;
+		:title = "MERRA2 estimated CAPE and CIN" ;
+		:note = "calculated with NCAR getcape.f90" ;
+		:node_offset = 1 ;
+}
