@@ -2,11 +2,13 @@
 
 daydir=${1}
 
-output=$daydir.nc
+output=CAPE/${daydir##*/}.nc
+
+echo $output
 
 ncgen -4 -o $output cape.cdl
 
-for infile in `ls $daydir/*.nc4`
+for infile in `ls $daydir/*1990010*.nc4`
 do
   
   yyyymmdd=$(expr $infile : '.*\([0-9]\{8\}\)[^/]*/*$')
@@ -14,3 +16,5 @@ do
   ./merra2cape $infile $output $yyyymmdd
   
 done
+
+echo

@@ -32,7 +32,9 @@ real(dp), allocatable, dimension(:)     :: time
 real(sp), allocatable, dimension(:,:,:) :: Tk ! air temperature (K)
 real(sp), allocatable, dimension(:,:,:) :: QV ! specific humidity (kg kg-1)
 
-real(sp) :: imissing
+real(sp) :: qmissing
+
+integer(i2) :: imissing
 
 ! intermediate variables
 
@@ -43,6 +45,8 @@ real(sp), allocatable, dimension(:) :: Tdew              ! dewpoint temperature 
 
 real(sp), allocatable, dimension(:,:) :: cape
 real(sp), allocatable, dimension(:,:) :: cin
+
+integer(i2), allocatable, dimension(:,:) :: ovar
 
 ! other local variables
 
@@ -93,6 +97,9 @@ integer :: year
 integer :: mon
 integer :: day
 integer :: hr
+
+real(sp) :: scale_factor
+real(sp) :: add_offset
 
 character(50) :: yyyymmdd
 
@@ -159,6 +166,7 @@ if (status /= nf90_noerr) call handle_err(status)
 lm = minloc(lev,mask=lev >= 100.,dim=1)
 
 ! ---
+! time relative to 1980-01-01 for time variable
 
 bt = timestruct(1980,1,1,0,0,0.)
 
@@ -174,8 +182,6 @@ tt = timestruct(year,mon,day,0,0,0.)
 
 call ymdt2jd(tt)
 
-otb = 4 * nint(tt%jd - bt%jd)
-
 do t = 1,4
 
   hr = 6 * (t - 1)
@@ -189,6 +195,21 @@ do t = 1,4
 end do
 
 ! ---
+! time index position in monthly output file
+
+bt = timestruct(year,1,1,0,0,0.)
+
+call ymdt2jd(bt)
+
+tt = timestruct(year,mon,day,0,0,0.)
+
+call ymdt2jd(tt)
+
+otb = 4 * nint(tt%jd - bt%jd)
+
+! write(0,*)otb,time
+
+! ---
 
 allocate(Tk(xlen,ylen,nlev))
 allocate(QV(xlen,ylen,nlev))
@@ -198,6 +219,8 @@ allocate(Tdew(nlev))
 
 allocate(cape(xlen,ylen))
 allocate(cin(xlen,ylen))
+
+allocate(ovar(xlen,ylen))
 
 ! assign missing value to output variables
 
@@ -210,7 +233,7 @@ cin  = rmissing
 status = nf90_inq_varid(ifid,'T',tairid)
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_get_att(ifid,tairid,'missing_value',imissing)
+status = nf90_get_att(ifid,tairid,'missing_value',qmissing)
 if (status /= nf90_noerr) call handle_err(status)
 
 status = nf90_inq_varid(ifid,'QV',humsid)
@@ -248,6 +271,17 @@ if (status /= nf90_noerr) call handle_err(status)
 status = nf90_inq_varid(ofid,'CIN',cinid)
 if (status /= nf90_noerr) call handle_err(status)
 
+! get output missing, scale factor, and add offset
+
+status = nf90_get_att(ofid,capeid,'missing_value',imissing)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_get_att(ofid,capeid,'scale_factor',scale_factor)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_get_att(ofid,capeid,'add_offset',add_offset)
+if (status /= nf90_noerr) call handle_err(status)
+
 ! -------------------------------------------------------
 ! main timestep loop, calculate one timestep at a time
 
@@ -263,7 +297,7 @@ do t = 1,tlen
   status = nf90_get_var(ifid,humsid,QV,start=[1,1,1,t],count=[xlen,ylen,nlev,1])   
   if (status /= nf90_noerr) call handle_err(status)
   
-  write(status_line,'(a,i0,a,f0.3)')' working on ',ot,' ',time(t) 
+  write(status_line,'(a,i0,a,i0,a,i0,a,i0,a,f0.3)')' working on ',year,'-',mon,'-',day,': ',ot,' ',time(t)
   call overprint(status_line)
 
   do y = 1,ylen
@@ -279,7 +313,7 @@ do t = 1,tlen
 
         ! there are places in the input where q = 0, which breaks the calculations, so skip these values
               
-        if (QV(x,y,l) == imissing .or. .not. QV(x,y,l) > 0.) cycle
+        if (QV(x,y,l) == qmissing .or. .not. QV(x,y,l) > 0.) cycle
     
         ! calculate dewpoint temperature
         
@@ -313,7 +347,6 @@ do t = 1,tlen
 
   ar_cape(1) = min(ar_cape(1),varmin)
   ar_cape(2) = max(ar_cape(2),varmax)
-  
 
   status = nf90_put_att(ofid,capeid,'actual_range',ar_cape)
   if (status /= nf90_noerr) call handle_err(status)
@@ -335,17 +368,25 @@ do t = 1,tlen
 
   ! ---
   
-  status = nf90_put_var(ofid,capeid,cape,start=[1,1,ot],count=[xlen,ylen,1])
+  ovar = imissing
+
+  where (cape /= rmissing) ovar = nint((cape + add_offset) / scale_factor,kind=i2)
+  
+  status = nf90_put_var(ofid,capeid,ovar,start=[1,1,ot],count=[xlen,ylen,1])
   if (status /= nf90_noerr) call handle_err(status)
 
-  status = nf90_put_var(ofid,cinid,cin,start=[1,1,ot],count=[xlen,ylen,1])
+  ovar = imissing
+
+  where (cin /= rmissing) ovar = nint((cin + add_offset) / scale_factor,kind=i2)
+
+  status = nf90_put_var(ofid,cinid,ovar,start=[1,1,ot],count=[xlen,ylen,1])
   if (status /= nf90_noerr) call handle_err(status)
 
 end do
 
-write(0,*)
-write(0,*)'CAPE:',ar_cape
-write(0,*)'CIN: ',ar_cin
+! write(0,*)
+! write(0,*)'CAPE:',ar_cape
+! write(0,*)'CIN: ',ar_cin
 
 ! -------------------------------------------------------
 
