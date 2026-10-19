@@ -1,6 +1,6 @@
 module capemod
 
-! modifications to the code below done by Alex Koch in early 2022
+! modifications to the code below by Alex Koch in early 2022
 ! further edits and formatting by Jed Kaplan in late 2024
 
 implicit none
@@ -146,7 +146,6 @@ integer :: kmax
 integer :: n
 integer :: nloop
 integer :: i
-! integer :: orec
 
 real(sp), allocatable, dimension(:) :: p
 real(sp), allocatable, dimension(:) :: t
@@ -204,10 +203,6 @@ real(sp) :: rm
 real(sp) :: cpm
 real(r8) :: avgth
 real(r8) :: avgqv
-
-! real(sp) :: getqvs
-! real(sp) :: getqvi
-! real(sp) :: getthe
 
 ! -----------------------------------------------------------------------
 
@@ -286,7 +281,7 @@ case(2)
     
   else
 
-    ! find max thetae below 500 mb
+    ! find max theta_e below 500 mb
     maxthe = 0.
 
     do k = 1,nk
