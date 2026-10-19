@@ -1,20 +1,30 @@
 #!/usr/bin/bash
 
-daydir=${1}
-
-output=CAPE/${daydir##*/}.nc
-
-echo $output
-
-ncgen -4 -o $output cape.cdl
-
-for infile in `ls $daydir/*1990010*.nc4`
+for ((yr=2012;yr<=2023;yr++))
 do
-  
-  yyyymmdd=$(expr $infile : '.*\([0-9]\{8\}\)[^/]*/*$')
+  for ((m=1;m<=12;m++))
+  do
     
-  ./merra2cape $infile $output $yyyymmdd
-  
-done
+    mon=`printf %02i $m`
+    
+    daydir=rawdata/$yr$mon
 
-echo
+    output=CAPE/${daydir##*/}.nc
+    
+    echo $output
+
+    ncgen -4 -o $output cape.cdl
+    
+    for infile in `ls $daydir/*.nc4`
+    do
+      
+      yyyymmdd=$(expr $infile : '.*\([0-9]\{8\}\)[^/]*/*$')
+
+      ./merra2cape $infile $output $yyyymmdd
+      
+    done
+
+    echo
+
+  done
+done

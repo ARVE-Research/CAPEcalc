@@ -2,10 +2,10 @@
 
 FC = gfortran
 
-FCFLAGS = -ffree-form -ffree-line-length-none -ftree-vectorize -fopenmp -Wall
+FCFLAGS = -O3 -ffree-form -ffree-line-length-none -ftree-vectorize -fopenmp -Wall
 # FCFLAGS = -ffree-form -ffree-line-length-none -ftree-vectorize -Wall
 
-# FCFLAGS = -g  -O0 -ffree-line-length-none -fcheck=all -fno-check-array-temporaries -ffpe-trap=invalid,zero,overflow,underflow -g -fbacktrace -Wall -pedantic
+# FCFLAGS = -g -Og -ffree-line-length-none -fcheck=all -fno-check-array-temporaries -ffpe-trap=invalid,zero,overflow,underflow -g -fbacktrace -Wall -pedantic
 
 # use the command "nf-config --all" to find the location of your netCDF installation
 # and enter the path next to " --prefix    ->" on the line below

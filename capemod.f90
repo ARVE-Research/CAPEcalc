@@ -518,19 +518,20 @@ do while (doit .and. k < nk)
       cpm = cp + cpv * qvbar + cpl * qlbar + cpi * qibar
 
       th2 = th1 * exp(lhv * (ql2 - ql1) / (cpm * tbar) + & 
-                  lhs * (qi2 - qi1) / (cpm * tbar)     + &
-                 (rm / cpm - rd / cp) * alog(p2 / p1))
+                      lhs * (qi2 - qi1) / (cpm * tbar) + &
+                     (rm / cpm - rd / cp) * alog(p2 / p1))
 
       if (i > 90) write(0,*)i,th2,thlast,th2-thlast
 
-      if (i > 100) then
+      if (i > 100) then  ! it does occasionally happen that this loop does not converge
+                         ! in that case, we should not abort the program, but leave CAPE and CIN undefined (missing value)
 
         write(0,*)
         write(0,*)'  Error:  lack of convergence'
         write(0,*)
-        write(0,*)'  ... stopping iteration '
+        write(0,*)'  ... exiting calculation '
         write(0,*)
-        stop 1001
+        return
 
       end if
       
@@ -549,23 +550,26 @@ do while (doit .and. k < nk)
     ! Latest pressure increment is complete.  Calculate some important stuff:
 
     if (ql2 >= 1.e-10) cloud = .true.
-
-    if (adiabat == 1 .or. adiabat == 3) then
-
-      ! pseudoadiabat
+    
+    select case(adiabat)  ! Formulation of the moist adiabat
+    case(1,3)             ! pseudoadiabat
 
       qt  = qv2
       ql2 = 0.
       qi2 = 0.
+      
+    case(2,4)             ! reversible
+    
+      continue            ! do nothing
 
-    else if (adiabat <= 0 .or. adiabat >= 5) then
+    case default          ! not defined
 
       write(0,*)
       write(0,*)'  Undefined adiabat'
       write(0,*)
       stop 10000
 
-    end if
+    end select
 
   end do
 

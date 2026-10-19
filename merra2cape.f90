@@ -197,7 +197,7 @@ end do
 ! ---
 ! time index position in monthly output file
 
-bt = timestruct(year,1,1,0,0,0.)
+bt = timestruct(year,mon,1,0,0,0.)
 
 call ymdt2jd(bt)
 
@@ -221,11 +221,6 @@ allocate(cape(xlen,ylen))
 allocate(cin(xlen,ylen))
 
 allocate(ovar(xlen,ylen))
-
-! assign missing value to output variables
-
-cape = rmissing
-cin  = rmissing
 
 ! -------------------------------------------------
 ! get input varid
@@ -288,6 +283,9 @@ if (status /= nf90_noerr) call handle_err(status)
 do t = 1,tlen
 
   ot = otb + t
+
+  write(status_line,'(a,i0,a,i0,a,i0,a,i0,a,f0.3)')' working on ',year,'-',mon,'-',day,': ',ot,' ',time(t)
+  call overprint(status_line)
   
   ! ---
 
@@ -296,9 +294,11 @@ do t = 1,tlen
   
   status = nf90_get_var(ifid,humsid,QV,start=[1,1,1,t],count=[xlen,ylen,nlev,1])   
   if (status /= nf90_noerr) call handle_err(status)
+
+  ! assign missing value to output variables
   
-  write(status_line,'(a,i0,a,i0,a,i0,a,i0,a,f0.3)')' working on ',year,'-',mon,'-',day,': ',ot,' ',time(t)
-  call overprint(status_line)
+  cape = rmissing
+  cin  = rmissing
 
   do y = 1,ylen
   
@@ -370,14 +370,14 @@ do t = 1,tlen
   
   ovar = imissing
 
-  where (cape /= rmissing) ovar = nint((cape + add_offset) / scale_factor,kind=i2)
+  where (cape /= rmissing) ovar = nint((cape - add_offset) / scale_factor,kind=i2)
   
   status = nf90_put_var(ofid,capeid,ovar,start=[1,1,ot],count=[xlen,ylen,1])
   if (status /= nf90_noerr) call handle_err(status)
 
   ovar = imissing
 
-  where (cin /= rmissing) ovar = nint((cin + add_offset) / scale_factor,kind=i2)
+  where (cin /= rmissing) ovar = nint((cin - add_offset) / scale_factor,kind=i2)
 
   status = nf90_put_var(ofid,cinid,ovar,start=[1,1,ot],count=[xlen,ylen,1])
   if (status /= nf90_noerr) call handle_err(status)
